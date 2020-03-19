@@ -177,7 +177,8 @@ def ensemble(model_name, fold_id, dataset, test_set,
                        model, optimizer, criterion,
                        normalizer,  scheduler, writer)
 
-    test_ensemble(model_name, fold_id, ensemble_folds, test_set, fea_len, args)
+    test_ensemble(model_name, fold_id, ensemble_folds, test_set, fea_len,
+                  args, val_set=True)
 
 
 def experiment(model_name, fold_id, run_id, args,
@@ -318,14 +319,17 @@ def experiment(model_name, fold_id, run_id, args,
     writer.close()
 
 
-def test_ensemble(model_name, fold_id, ensemble_folds, hold_out_set, fea_len, args):
+def test_ensemble(model_name, fold_id, ensemble_folds, hold_out_set, fea_len,
+                  args, val_set=False):
     """
     take an ensemble of models and evaluate their performance on the test set
     """
-
-    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
-          "------------Evaluate model on Test Set------------\n"
-          "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
+    set_type = 'Test Set'
+    if val_set is True:
+        set_type = 'Val Set-'
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
+          f"-----------Evaluate model on {set_type}------------\n"
+          "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 
     model, normalizer = init_model(fea_len, args)
     criterion, _, _, = init_optim(model, args)

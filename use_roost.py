@@ -79,7 +79,7 @@ def predict_roost(args, model_name, csv_pred):
 
 def run():
     args = input_parser()
-    args.epochs = 100
+    args.epochs = 3
     model_name = 'test_name'
     csv_train = 'shear_train.csv'
     csv_val = 'shear_val.csv'
