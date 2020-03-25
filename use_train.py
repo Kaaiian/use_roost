@@ -4,7 +4,9 @@ import datetime
 
 import numpy as np
 import pandas as pd
-from tqdm.autonotebook import tqdm
+# from tqdm.autonotebook import tqdm
+from tqdm import tqdm
+import shutil
 
 import torch
 import torch.nn as nn
@@ -208,6 +210,7 @@ def experiment(model_name, fold_id, run_id, args,
     best_file = (f"models/best_{model_name}")
 
     if args.resume:
+        # shutil.copy(checkpoint_file, checkpoint_file+'_pre_resume')
         print("Resume Training from previous model")
         previous_state = load_previous_state(checkpoint_file,
                                              model,
@@ -220,6 +223,7 @@ def experiment(model_name, fold_id, run_id, args,
         model.to(args.device)
     else:
         if args.fine_tune:
+            # shutil.copy(checkpoint_file, checkpoint_file+'_pre_fine_tune')
             print("Fine tune from a network trained on a different dataset")
             previous_state = load_previous_state(args.fine_tune,
                                                  model,
@@ -228,15 +232,25 @@ def experiment(model_name, fold_id, run_id, args,
             model.to(args.device)
             criterion, optimizer, scheduler = init_optim(model, args)
         elif args.transfer:
+            # shutil.copy(checkpoint_file, checkpoint_file+'_pre_transfer')
             print("Use model as a feature extractor and retrain last layer")
             previous_state = load_previous_state(args.transfer,
                                                  model,
                                                  args.device)
             model, _, _, _, _, _ = previous_state
-            for p in model.parameters():
-                p.requires_grad = False
-            num_ftrs = model.output_nn.fc_out.in_features
-            model.output_nn.fc_out = nn.Linear(num_ftrs, 2)
+
+            for name, param in model.named_parameters():
+                fine_transfer = True
+                if fine_transfer:
+                    if 'output_nn.fc_out' in name:
+                        continue
+                    else:
+                        param.requires_grad = False
+                else:
+                    param.requires_grad = False
+                    num_ftrs = model.output_nn.fc_out.in_features
+                    model.output_nn.fc_out = nn.Linear(num_ftrs, 2)
+
             model.to(args.device)
             criterion, optimizer, scheduler = init_optim(model, args)
 
@@ -320,7 +334,7 @@ def experiment(model_name, fold_id, run_id, args,
 
 
 def test_ensemble(model_name, fold_id, ensemble_folds, hold_out_set, fea_len,
-                  args, val_set=False):
+                  args, val_set=False, best=True):
     """
     take an ensemble of models and evaluate their performance on the test set
     """
@@ -356,10 +370,19 @@ def test_ensemble(model_name, fold_id, ensemble_folds, hold_out_set, fea_len,
         checkpoint_file = (f"models/checkpoint_{model_name}")
         best_file = (f"models/best_{model_name}")
 
-        checkpoint = torch.load(f=checkpoint_file,
-                                map_location=args.device)
-        model.load_state_dict(checkpoint["state_dict"])
-        normalizer.load_state_dict(checkpoint["normalizer"])
+        if best:
+            model_file = best_file
+        else:
+            model_file = checkpoint_file
+
+        # checkpoint = torch.load(f=checkpoint_file,
+        #                         map_location=args.device)
+
+        loaded_model = torch.load(f=model_file,
+                                 map_location=args.device)
+
+        model.load_state_dict(loaded_model["state_dict"])
+        normalizer.load_state_dict(loaded_model["normalizer"])
 
         model.eval()
         idx, comp, y_test, pred, std = evaluate(generator=test_generator,

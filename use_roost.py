@@ -4,7 +4,8 @@ import datetime
 
 import numpy as np
 import pandas as pd
-from tqdm.autonotebook import tqdm
+# from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from sklearn.model_selection import train_test_split as split
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score, mean_absolute_error
 
 from roost.message import CompositionNet, ResidualNetwork, \
                             SimpleNetwork
@@ -22,7 +23,8 @@ from roost.data import input_parser, CompositionData, \
 from roost.utils import evaluate, save_checkpoint, \
                         load_previous_state, RobustL1, \
                         RobustL2, cyclical_lr, \
-                        LRFinder
+                        LRFinder, \
+                        pva_plot
 from use_train import ensemble, test_ensemble
 
 import math
@@ -30,16 +32,24 @@ import math
 # %%
 
 
-def train_roost(args, model_name, csv_train, csv_val=None, val_frac=0.15):
+def train_roost(args, model_name, csv_train, csv_val=None, val_frac=0.0,
+                resume=False, transfer=None, fine_tune=None):
 
     args.data_path = f'data/datasets/{csv_train}'
-    args.fea_path = "data/embeddings/onehot-embedding.json"
     args.val_size = val_frac
 
     dataset = CompositionData(data_path=args.data_path,
                               fea_path=args.fea_path)
     orig_atom_fea_len = dataset.atom_fea_dim
     args.fea_len = orig_atom_fea_len
+
+    if resume:
+        args.resume = resume
+    else:
+        if transfer is not None:
+            args.transfer = transfer
+        elif fine_tune is not None:
+            args.fine_tune = fine_tune
 
     if csv_val is None:
         indices = list(range(len(dataset)))
@@ -77,17 +87,138 @@ def predict_roost(args, model_name, csv_pred):
                   hold_out_set, fea_len, args)
 
 
-def run():
+def generate_standard_model(mat_prop):
     args = input_parser()
-    args.epochs = 3
-    model_name = 'test_name'
-    csv_train = 'shear_train.csv'
-    csv_val = 'shear_val.csv'
-    csv_test = 'shear_test.csv'
-    # train_roost(args, model_name, csv_train, csv_val=None, val_frac=0.15)
+    args.optim = 'AdamW'
+    args.epochs = 2
+    args.fea_path = "data/embeddings/matscholar-embedding.json"
+    model_name = f'{mat_prop}_model_{args.epochs}_epochs'
+
+    csv_train = 'aflow/{mat_prop}/train.csv'
+    csv_val = 'aflow/{mat_prop}/val.csv'
+    csv_test = 'aflow/{mat_prop}/test.csv'
+
+    dataset = CompositionData(data_path=args.data_path,
+                              fea_path=args.fea_path)
+    orig_atom_fea_len = dataset.atom_fea_dim
+    args.fea_len = orig_atom_fea_len
+
     train_roost(args, model_name, csv_train, csv_val=csv_val)
     predict_roost(args, model_name, csv_test)
 
 
+def generate_cgcnn_aflow_trained_model(mat_prop):
+    args = input_parser()
+    args.optim = 'AdamW'
+    args.epochs = 2
+    args.fea_path = "data/embeddings/matscholar-embedding.json"
+    model_name = f'{mat_prop}_cgcnn_aflow_model_{args.epochs}_epochs'
+
+    csv_train = 'cgcnn_aflow/{mat_prop}_cgcnn_pred.csv'
+    csv_val = 'aflow/{mat_prop}/val.csv'
+    csv_test = 'aflow/{mat_prop}/test.csv'
+
+    dataset = CompositionData(data_path=args.data_path,
+                              fea_path=args.fea_path)
+    orig_atom_fea_len = dataset.atom_fea_dim
+    args.fea_len = orig_atom_fea_len
+
+    train_roost(args, model_name, csv_train, csv_val=csv_val)
+    predict_roost(args, model_name, csv_test)
+
+
+def generate_cgcnn_aflow_transfer_model(mat_prop):
+    args = input_parser()
+    args.optim = 'AdamW'
+    args.epochs = 2
+    args.fea_path = "data/embeddings/matscholar-embedding.json"
+    model_name = f'{mat_prop}_cgcnn_aflow_transfer_model_{args.epochs}_epochs'
+
+    csv_train = 'cgcnn_aflow/{mat_prop}_cgcnn_pred.csv'
+    csv_val = 'aflow/{mat_prop}/val.csv'
+    csv_test = 'aflow/{mat_prop}/test.csv'
+
+    dataset = CompositionData(data_path=args.data_path,
+                              fea_path=args.fea_path)
+    orig_atom_fea_len = dataset.atom_fea_dim
+    args.fea_len = orig_atom_fea_len
+
+    train_roost(args, model_name, csv_train, csv_val=csv_val)
+    predict_roost(args, model_name, csv_test)
+
+
+def show_results(model_name):
+    df_results = pd.read_csv(f'results/test_results_{model_name}.csv')
+    y_act, y_pred = df_results['target'], df_results['pred-0']
+
+    # choose to "log10" or "unlog10" your data before metrics/plots
+    if False:
+        y_act, y_pred = np.log10(y_act), np.log10(y_pred)
+    if False:
+        y_act, y_pred = 10**y_act, 10**y_pred
+
+    r2 = r2_score(y_act, y_pred)
+    mae = mean_absolute_error(y_act, y_pred)
+    print(f'-------------------')
+    print(f'r2: {r2:0.4f}, mae: {mae:0.4f}')
+    pva_plot(y_act, y_pred, model_name)
+
+
+def run():
+    args = input_parser()
+    args.optim = 'AdamW'
+    args.epochs = 300
+    args.fea_path = "data/embeddings/matscholar-embedding.json"
+    model_name = f'shear_train_{args.epochs}_epochs'
+    model_name = 'finetune_500'
+    # model_name = 'shear_cgcnn_aflow_fine_tune_500_epoch'
+
+    # csv_train = 'cgcnn_predictions/shear_train_and_cgcnn_aflow_pcd_train.csv'
+    csv_train = 'shear_train.csv'
+    csv_val = 'shear_val.csv'
+    csv_test = 'shear_test.csv'
+    trained_model = 'models/checkpoint_shear_cgcnn_aflow_fine_tune_500_epoch'
+
+    dataset = CompositionData(data_path=args.data_path,
+                              fea_path=args.fea_path)
+    orig_atom_fea_len = dataset.atom_fea_dim
+    args.fea_len = orig_atom_fea_len
+
+    # train_roost(args, model_name, csv_train, val_frac=0.05)
+    # train_roost(args, model_name, csv_train, csv_val=csv_val)
+    # train_roost(args, model_name, csv_train, csv_val=csv_val, resume=True)
+    # train_roost(args, model_name, csv_train, csv_val=csv_val,
+    #             fine_tune=trained_model)
+    # train_roost(args, model_name, csv_train, csv_val=csv_val,
+    #             transfer=trained_model)
+    predict_roost(args, model_name, csv_test)
+
+    df_results = pd.read_csv(f'results/test_results_{model_name}.csv')
+    y_act, y_pred = df_results['target'], df_results['pred-0']
+
+    # choose to "log10" or "unlog10" your data before metrics/plots
+    if False:
+        y_act, y_pred = np.log10(y_act), np.log10(y_pred)
+    if False:
+        y_act, y_pred = 10**y_act, 10**y_pred
+
+    r2 = r2_score(y_act, y_pred)
+    mae = mean_absolute_error(y_act, y_pred)
+    print(f'-------------------')
+    print(f'r2: {r2:0.4f}, mae: {mae:0.4f}')
+    pva_plot(y_act, y_pred, model_name)
+
+
+
+if __name__ == '__main___':
+    mat_props = os.listdir('data/datasets/aflow')
+    for mat_prop is mat_props:
+        generate_standard_model(mat_prop)
+        generate_cgcnn_aflow_trained_model(mat_prop)
+        generate_cgcnn_aflow_transfer_model(mat_prop)
+
+
 if __name__ == '__main__':
+    # for mat_prop in mat_props:
+    #     pass
     run()

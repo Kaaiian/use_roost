@@ -1,13 +1,15 @@
 import os
 import torch
-from tqdm.autonotebook import trange
+# from tqdm.autonotebook import trange
+from tqdm import trange
 import shutil
 import math
 import numpy as np
 
 import copy
 
-from tqdm.autonotebook import tqdm
+# from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 from torch.optim.lr_scheduler import _LRScheduler
 import matplotlib.pyplot as plt
 
@@ -124,6 +126,19 @@ def load_previous_state(path, model, device, optimizer=None,
 
     return model, optimizer, normalizer, scheduler, best_error, start_epoch
 
+# # BASTARDIZATION KAAI STYLE! >:)
+# def RobustL1(output, log_std, target):
+#     """
+#     Robust L1 loss using a lorentzian prior. Allows for estimation
+#     of an aleatoric uncertainty.
+#     """
+#     # if sum(target > 0) == 0:
+#     loss = 1/len(target) * torch.sum((torch.log(output+1) - torch.log(target+1))**2)
+#     return torch.sqrt(loss)
+#     # loss = np.sqrt(2.0) * torch.abs(output - target) * \
+#     #     torch.exp(- log_std) + log_std
+#     # return torch.mean(loss)
+
 
 def RobustL1(output, log_std, target):
     """
@@ -193,13 +208,13 @@ class LRFinder(object):
     fastai/lr_find: https://github.com/fastai/fastai
 
     EDITS:
-        This function has been edited to make use of the robust MSE model 
+        This function has been edited to make use of the robust MSE model
         we are using and to unpack the inputs which are returned by the
         dataloader as a tuple.
 
     """
 
-    def __init__(self, model, optimizer, criterion, metric="mse", 
+    def __init__(self, model, optimizer, criterion, metric="mse",
                  device=None, memory_cache=True, cache_dir=None):
         self.model = model
         self.optimizer = optimizer
@@ -482,3 +497,68 @@ class StateCacher(object):
         for k in self.cached:
             if os.path.exists(self.cached[k]):
                 os.remove(self.cached[k])
+
+# %%
+def pva_plot(y_act, y_pred, model_name):
+    plt.figure(1, figsize=(4, 4))
+    left, width = 0.1, 0.65
+
+    bottom, height = 0.1, 0.65
+    bottom_h = left_h = left + width
+    rect_scatter = [left, bottom, width, height]
+    rect_histx = [left, bottom_h, width, 0.15]
+    rect_histy = [left_h, bottom, 0.15, height]
+
+    ax1 = plt.axes(rect_histx)
+    ax1.hist(y_act, bins=31, color='silver', edgecolor='k')
+    ax1.set_xticks([])
+    ax1.set_yticks([])
+
+    ax2 = plt.axes(rect_scatter)
+
+    ax2.tick_params(direction='in',
+                    length=5,
+                    bottom=True,
+                    top=True,
+                    left=True,
+                    right=True)
+
+    ax2.plot(y_act, y_pred, 'o', mfc='#C0C0C0', alpha=0.5, label=None,
+             mec='#2F4F4F', mew=1.0, markersize=5)
+
+    ax2.plot([-10**9, 10**9], [-10**9, 10**9], 'k--', mfc='k', alpha=0.8,
+             label='ideal', mec='#2F4F4F', mew=1.3, markersize=10)
+
+    ax2.set_ylabel('Predicted')
+    ax2.set_xlabel('Actual')
+    x_range = max(y_act) - min(y_act)
+    ax2.set_xlim(max(y_act) - x_range*1.05,
+                 min(y_act) + x_range*1.05)
+
+    ax2.set_ylim(max(y_act) - x_range*1.05,
+                 min(y_act) + x_range*1.05)
+
+    ax1.set_xlim(ax2.get_xlim())
+    ax1.axis('off')
+
+    ax3 = plt.axes(rect_histy)
+    ax3.hist(y_pred,
+             bins=31,
+             color='silver',
+             edgecolor='k',
+             orientation='horizontal')
+    ax3.set_xticks([])
+    ax3.set_yticks([])
+    ax3.set_ylim(ax2.get_ylim())
+    ax3.axis('off')
+
+    ax2.legend(loc=2, framealpha=0.15, handlelength=1.5)
+    save_dir = 'results/figures'
+    fig_name = f'{save_dir}/test_fig_{model_name}.png'
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(fig_name, bbox_inches='tight', dpi=300)
+    # plt.show()
+    plt.draw()
+    plt.pause(0.001)
+    plt.close()
+
