@@ -183,7 +183,7 @@ class CompositionData(Dataset):
         self.df = pd.read_csv(data_path, keep_default_na=False, na_values=[])
         if self.df.shape[-1] == 2:
             # remove duplicates via "averaging"
-            self.df = self.df[self.df[self.df.columns[-1]] > 0]
+            # self.df = self.df[self.df[self.df.columns[-1]] > 0]
             self.df = self.df.groupby(self.df.columns[0]).mean().reset_index()
             if "cif_id" in self.df.columns:
                 self.df["cif_id"] = self.df['cif_id'].str.split('_ICSD').str[0]

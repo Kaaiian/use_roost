@@ -87,10 +87,11 @@ def predict_roost(args, model_name, csv_pred):
                   hold_out_set, fea_len, args)
 
 
-def generate_standard_model(mat_prop):
+def generate_standard_model(mat_prop, device):
     args = input_parser()
+    args.device = device
     args.optim = 'AdamW'
-    args.epochs = 2
+    args.epochs = 300
     args.fea_path = "data/embeddings/matscholar-embedding.json"
     model_name = f'{mat_prop}_model_{args.epochs}_epochs'
     csv_train = f'aflow/{mat_prop}/train.csv'
@@ -106,10 +107,11 @@ def generate_standard_model(mat_prop):
     predict_roost(args, model_name, csv_test)
 
 
-def generate_cgcnn_aflow_trained_model(mat_prop):
+def generate_cgcnn_aflow_trained_model(mat_prop, device):
     args = input_parser()
+    args.device = device
     args.optim = 'AdamW'
-    args.epochs = 2
+    args.epochs = 250
     args.fea_path = "data/embeddings/matscholar-embedding.json"
     model_name = f'{mat_prop}_cgcnn_aflow_model_{args.epochs}_epochs'
     csv_train = f'cgcnn_aflow/{mat_prop}_cgcnn_pred.csv'
@@ -125,14 +127,15 @@ def generate_cgcnn_aflow_trained_model(mat_prop):
     predict_roost(args, model_name, csv_test)
 
 
-def generate_cgcnn_aflow_transfer_model(mat_prop):
+def generate_cgcnn_aflow_transfer_model(mat_prop, device):
     args = input_parser()
+    args.device = device
     args.optim = 'AdamW'
-    args.epochs = 2
+    args.epochs = 250
     args.fea_path = "data/embeddings/matscholar-embedding.json"
     model_name = f'{mat_prop}_cgcnn_aflow_transfer_model_{args.epochs}_epochs'
     trained = f'models/best_{mat_prop}_cgcnn_aflow_model_{args.epochs}_epochs'
-    csv_train = f'cgcnn_aflow/{mat_prop}_cgcnn_pred.csv'
+    csv_train = f'aflow/{mat_prop}/train.csv'
     csv_val = f'aflow/{mat_prop}/val.csv'
     csv_test = f'aflow/{mat_prop}/test.csv'
     # define dataset
@@ -162,10 +165,32 @@ def show_results(model_name):
 
 # %%
 
-if __name__ == '__main__':
+def run(i):
+    if i == 0:
+        # device = torch.cuda.device(1)
+        device = 'cuda:0'
+    else:
+        device = 'cuda:1'
     mat_props = os.listdir('data/datasets/aflow')
-    for mat_prop in mat_props[2:3]:
-        generate_standard_model(mat_prop)
-        generate_cgcnn_aflow_trained_model(mat_prop)
-        generate_cgcnn_aflow_transfer_model(mat_prop)
+    step = 4
+    i = slice(i*step, step+i*step)
+    for mat_prop in mat_props[i]:
+        print('---------------------------------')
+        print(f'evaluating property: {mat_prop}')
+        print('---------------------------------')
+        generate_standard_model(mat_prop, device)
+        generate_cgcnn_aflow_trained_model(mat_prop, device)
+        generate_cgcnn_aflow_transfer_model(mat_prop, device)
+
+
+# if __name__ == '__main__':
+#     device = 0
+#     mat_props = os.listdir('data/datasets/aflow')
+#     for mat_prop in mat_props[4:5]:
+#         print('---------------------------------')
+#         print(f'evaluating property: {mat_prop}')
+#         print('---------------------------------')
+#         generate_standard_model(mat_prop, device)
+#         generate_cgcnn_aflow_trained_model(mat_prop, device)
+#         generate_cgcnn_aflow_transfer_model(mat_prop, device)
 
